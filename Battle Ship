@@ -1,0 +1,441 @@
+/**
+ * Game of battleship.
+ * User vs. computer, both boards are 10 x 10.
+ * User will input a coordinate and the program will check if 
+ * it is a hit or miss and place the approiate symbol on the board.
+ * At the end of the game it will display who won and both boards.
+ * 
+ * By: Katelyn Watford
+*/
+
+// Include standard headers
+#include <iostream>
+#include <iomanip>
+#include <thread>
+#include <chrono>
+#include <cctype>
+#include <climits>
+#include <cstdlib>
+#include <ctime>
+#include <cstring>
+using namespace std;
+
+// Include custom headers
+#include "gameSpecs.h"
+#include "enemyAI.h"
+
+/**
+ * Displays random battleship coordinates in quick succession to make the
+ * illusion that the computer/enemy is thinking about which coordinate to shoot
+ * at.
+ *
+ * After the function returns the last random coordinate is still on the screen,
+ * but the cursor is back up so that it can be overwritten with something new.
+ */
+void randomCoordinatesAnimation();
+
+/**
+ * This function will set all the values in the array equal to the value
+ * of the second parameter.
+*/
+void wipeBoard(Tile board[][BOARD_LENGTH], Tile tile = WATER);
+
+/**
+ * This function will display both players baords.
+*/
+void displayBoards(const Tile playersCard[][BOARD_LENGTH], 
+	const Tile enemysCard[][BOARD_LENGTH], bool showAll = false);
+
+/**
+ * This function will display the ships horizontally
+*/
+bool placeShipHorizontally(Tile hShip, int shipSize, int row, 
+	int col, Tile board[][BOARD_LENGTH]);
+
+/**
+ * This function will display the ships vertically
+*/
+bool placeShipVertically(Tile vShip, int shipSize, int row, 
+	int col, Tile board[][BOARD_LENGTH]);
+
+/**
+ * This function will place the ship on the board randomly
+*/
+void placeShipsRandomly(Tile board[][BOARD_LENGTH]);
+
+/**
+ * This function will place the ship on the board randomly
+*/
+void placePlayersShips(Tile board[][BOARD_LENGTH]);
+
+/**
+ * This function will return a string of the players turn to be displayed
+*/
+string playersTurn(Tile enemysBoard[][BOARD_LENGTH], int hits[]);
+
+/**
+ * This function will check if the hits equal out to zero and return the bool
+ * value to use if the ships have been sunk
+*/
+bool isAllZeros(int hits[], int length);
+
+int main ()
+{
+	// Variables
+	string msg;
+	bool shipsZeroOut;
+
+	// 2D arrays with 10 columns and 10 rows to create the fleet boards
+	Tile playersBoard[BOARD_LENGTH][BOARD_LENGTH];
+	Tile computersBoard[BOARD_LENGTH][BOARD_LENGTH];
+
+	// 1D array with ships length
+	int playersShipSize[6] = {0, 5, 4, 3, 3, 2};
+	int enemysShipSize[6] = {0, 5, 4, 3, 3, 2};
+
+	// Seed the random number generator using the current time.
+	srand(static_cast<unsigned int>(time(nullptr)));
+
+	// Call to randomly place ships vertically and horizontally on board
+	placeShipsRandomly(computersBoard);
+
+	// call place players ship
+	placePlayersShips(playersBoard);
+
+	do {
+		// Display the boards
+		displayBoards(playersBoard, computersBoard);
+
+		// call playersTurn
+		msg = playersTurn(computersBoard, enemysShipSize);
+		cout << endl;
+		cout << "   Your shot: " << msg << endl;
+
+		shipsZeroOut = isAllZeros(enemysShipSize, 6);
+
+		if (shipsZeroOut)
+			break;
+
+		// Display the boards
+		displayBoards(playersBoard, computersBoard);
+
+		// Call the enemys board from enemyAI.h
+		msg = EnemyAI::enemyTurn(playersBoard, playersShipSize);
+		cout << endl;
+		cout << "   Enemy shot: " << msg << endl;
+		shipsZeroOut = isAllZeros(playersShipSize, 6);
+
+	}while(!shipsZeroOut);
+
+	// Check who won the game!
+	if(isAllZeros(enemysShipSize, 6))
+	{
+		cout << "You have sunk the enemys fleet!\n";
+		cout << "You win!";
+	}
+	else
+	{
+		cout << "The enemy has sunk your fleet!\n";
+		cout << "Enemy wins!";
+	}
+
+	cout << endl;
+
+	// Final Display of boards
+	displayBoards(playersBoard, computersBoard);
+
+	return 0;
+}
+
+void randomCoordinatesAnimation()
+{
+	// Variables to hold random coordinates to print
+	int colNumber;
+	char rowLetter;
+
+	cout << left; // left align columns
+
+	// Repeatedly output a random coordinate, then wait, then backup to 
+	// overwrite
+	// The pauses increase in time exponentially until it is >= 160 msecs
+	for (int msecs = 10; msecs < 160; msecs = static_cast<int>(msecs * 1.1))
+	{
+		// Get random numbers
+		rowLetter = rand() % BOARD_LENGTH + 'A';
+		colNumber = rand() % (BOARD_LENGTH) + 1;
+
+		// Output numbers
+		cout << rowLetter << setw(2) << colNumber << flush;
+
+		// Wait the alloted time
+		this_thread::sleep_for(chrono::milliseconds(msecs));
+
+		// Backup for next output.
+		cout << "\b\b\b";
+	}
+
+	cout << right; // reset alignment back to the default
+}
+
+void wipeBoard(Tile board[][BOARD_LENGTH], Tile tile)
+{
+	for(int rowIndex = 0; rowIndex < BOARD_LENGTH; ++rowIndex)
+	{
+		for(int colIndex = 0; colIndex < BOARD_LENGTH; ++colIndex)
+		{
+			board[rowIndex][colIndex] = tile;
+		}
+	}
+}
+
+void displayBoards(const Tile playersCard[][BOARD_LENGTH], 
+	const Tile enemysCard[][BOARD_LENGTH], bool showAll)
+{
+	// Create a 1D array
+	int rowIndex;
+	int colIndex;
+	char rowLetter;
+
+	// Outputting name of baord
+	cout << "  Enemy's Fleet           Your Fleet" << endl;
+
+	// Outputting column numbers
+	cout << "   1 2 3 4 5 6 7 8 910     1 2 3 4 5 6 7 8 910" << endl;
+
+	// Initializing all of the rows to create a 2D array
+	for(rowIndex = 0; rowIndex < BOARD_LENGTH; ++rowIndex) 
+	{ 
+		// assigning the letter to rowletter and then updating it on the next
+		// run through the loop
+		rowLetter = 'A' + rowIndex;
+
+		cout << " " << rowLetter; //letter coordinates
+		
+		// Outputting the enemy's tiles to the board
+		for(colIndex = 0; colIndex < BOARD_LENGTH; ++colIndex)
+		{
+			if(showAll)
+				cout << " " << tileToSymbol(enemysCard[rowIndex][colIndex]);
+			else if (enemysCard[rowIndex][colIndex] > MISS)
+				cout << " X"; // hit
+			else if (enemysCard[rowIndex][colIndex] == MISS) // miss
+				cout << " ~";
+			else
+				cout << " ."; // unknown
+		}
+
+		// Your Fleet
+		cout << "   " << rowLetter;
+
+		// Outputting your fleet's tiles to the board
+		for(colIndex = 0; colIndex < BOARD_LENGTH; ++colIndex)
+		{
+			cout << " " << tileToSymbol(playersCard[rowIndex][colIndex]);
+		}
+		
+		cout << endl;
+	}
+}
+
+bool placeShipHorizontally(Tile hShip, int shipSize, int row, 
+	int col, Tile board[][BOARD_LENGTH])
+{
+	// Check if ship position is valid if it is not return false
+	if(col < 0 || col + shipSize > BOARD_LENGTH
+		|| row < 0 || row >= BOARD_LENGTH)
+	{
+		return false;
+	}
+	
+	for (int colIndex = col; colIndex < col + shipSize; ++colIndex)
+	{
+		if (board[row][colIndex] != WATER)
+		{
+			return false;
+		}
+	}
+
+	for (int colIndex = col; colIndex < col + shipSize; ++colIndex)
+	{
+		board[row][colIndex] = hShip;
+	}
+
+	return true;
+}
+
+bool placeShipVertically(Tile vShip, int shipSize, int row, 
+	int col, Tile board[][BOARD_LENGTH])
+{
+	// Check if ship position is valid if it is not return false
+	if(row < 0 || row + shipSize > BOARD_LENGTH
+		|| col < 0 || col >= BOARD_LENGTH)
+	{
+		return false;
+	}
+	
+	for (int rowIndex = row; rowIndex < row + shipSize; ++rowIndex)
+	{
+		if (board[rowIndex][col] != WATER)
+		{
+			return false;
+		}
+	}
+
+	for (int rowIndex = row; rowIndex < row + shipSize; ++rowIndex)
+	{
+		board[rowIndex][col] = vShip;
+	}
+
+	return true;
+}
+
+void placeShipsRandomly(Tile board[][BOARD_LENGTH])
+{
+	// wipe the board
+	wipeBoard(board);
+
+	for (Tile ship = AIRCRAFT_CARRIER; ship <= PATROL_BOAT; 
+	ship = static_cast<Tile>(ship + 1))
+	{
+		bool shipPlaced;
+		do
+		{	
+			int row = rand() % BOARD_LENGTH;
+			int col = rand() % BOARD_LENGTH;
+
+			if (rand() % 2 == 0)
+			{
+				shipPlaced = placeShipHorizontally(ship, SHIP_SIZE[ship], 
+					row, col, board);
+			}
+			else
+			{
+				shipPlaced = placeShipVertically(ship, SHIP_SIZE[ship], 
+					row, col, board);
+			}
+		}
+		while(!shipPlaced);
+	}
+}
+
+void placePlayersShips(Tile board[][BOARD_LENGTH])
+{
+	// variables
+	string playBoard;
+
+	// Ask user if they want this board 
+	do {
+		// Call to randomly place ships on board
+		placeShipsRandomly(board);
+
+		// Display the boards
+		displayBoards(board, board);
+		
+		cout << "Do you want to play with this board? (y/n): ";
+		cin >> playBoard;
+		cout << endl;
+
+		// looping through to make sure only y or n is entered otherwise
+		// keep asking for a y or n
+		while(playBoard != "y" && playBoard != "Y"
+			&& playBoard != "n" && playBoard != "N")
+		{
+			cout << "Please enter 'y' or 'n': ";
+			cin >> playBoard;
+			cout << endl;
+		}
+	}while(playBoard == "n" || playBoard == "N");
+}
+
+string playersTurn(Tile enemysBoard[][BOARD_LENGTH], int hits[])
+{
+	char rowCoordinates;
+	int colCoordinates;
+	int rowIndex;
+	int colIndex;
+	string coordinate;
+	bool validInput;
+	string message;
+	int calcHits;
+	Tile enemyTileName;
+
+	do{
+		cout << "Enter the coordinates for your shot (e.g. B2): ";
+		cin >> rowCoordinates;
+		cin >> colCoordinates;
+		// cout << endl;
+
+		// convert to upper case
+		rowCoordinates = toupper(rowCoordinates);
+
+		// converting to indexes
+		rowIndex = rowCoordinates - 'A';
+		colIndex = colCoordinates - 1;
+
+		// checking if coordinate is on board
+		if(cin.fail() || ('A' > rowCoordinates || rowCoordinates > 'J') ||
+			(colCoordinates > BOARD_LENGTH) || colCoordinates < 1)
+		{
+			cout << "Invalid coordinates." << endl;
+			cout << "	Pick a row value between A and J" <<
+				" and a column value between 1 and 10" << endl;
+			validInput = false;
+			cin.clear();
+			cin.ignore(INT_MAX, '\n');
+		}
+		// check if shot at coordinates before
+		else if (enemysBoard[rowIndex][colIndex] >= MISS)
+		{
+			cout << "You have already shot here." << endl;
+			validInput = false;
+		}
+		else
+		{
+			validInput = true;
+		}
+
+	}while(!validInput);
+
+	// convert to string
+	message = rowCoordinates + to_string(colIndex + 1);
+
+	// check if hit or miss outside of loop
+	if(enemysBoard[rowIndex][colIndex] == WATER)
+	{
+		enemysBoard[rowIndex][colIndex] = MISS;
+		message += " Miss.\n";
+	}
+	else
+	{
+		// assign ship name
+		enemyTileName = enemysBoard[rowIndex][colIndex];
+
+		// if hit update location and output hit if sunk output that as well
+		enemysBoard[rowIndex][colIndex] = 
+			static_cast<Tile>(enemysBoard[rowIndex][colIndex] + MISS);
+
+		message += " Hit!\n";
+
+		// decrease enemtTileName index to see if its sunk
+		hits[enemyTileName]--;
+
+		if(hits[enemyTileName] == 0)
+		{
+			message += "  You sunk the enemy's " 
+				+ shipToString(enemyTileName) + "!\n";
+		}
+	}
+
+	return message;
+}
+
+bool isAllZeros(int hits[], int length)
+{
+	for(int index = 0; index < length; index++)
+	{
+		if (hits[index] != 0)
+			return false;
+	}
+
+	return true;
+}
